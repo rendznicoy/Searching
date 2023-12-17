@@ -13,6 +13,13 @@ class Node:
         self.name = name
         self.neighbors = neighbors
 
+def generate_neighbors(graph, node):
+    # Retrieve neighbors from the graph
+    if node in graph:
+        return graph[node].neighbors
+    else:
+        return []
+
 class PathfindingSimulator:
     def __init__(self, master):
         self.master = master
@@ -212,40 +219,41 @@ class PathfindingSimulator:
         self.pause_button.config(state=tk.NORMAL)
         self.start_simulation_button.config(state=tk.DISABLED)
 
-        while self.queue and not self.pause_flag:
+        start_node = self.start_node_entry.get().upper()  # Convert to uppercase for consistency
+        current_node = start_node
+        path = [start_node]
+
+        while current_node != goal_node and not self.pause_flag:
             time.sleep(1 / simulation_speed)
 
-            current_node, path = self.queue.popleft()
-            if current_node == goal_node:
-                print("Path found:", path)
-                self.path_found_label.config(text=f"Path Found: {path}")
+            neighbors = generate_neighbors(self.graph, current_node)
+            best_neighbor = max(neighbors, key=self.euclidean_distance)
+
+            if self.euclidean_distance(best_neighbor, goal_node) >= self.euclidean_distance(current_node, goal_node):
+                print("No better neighbor found. Stopping.")
                 break
 
-            if current_node not in self.visited:
-                self.visited.add(current_node)
+            current_node = best_neighbor
+            path.append(current_node)
 
-                if current_node in self.graph:
-                    extensions = list(self.graph.neighbors(current_node))
-                    enqueue_count += len(extensions)  # Count enqueues
-                    extensions.sort(key=lambda x: self.euclidean_distance(x, goal_node))
-                    for neighbor in extensions:
-                        if neighbor not in self.visited:
-                            new_path = list(path)
-                            new_path.append(neighbor)
-                            self.queue.append((neighbor, new_path))
+            self.update_path(path, current_node, neighbors)
+            enqueue_count += 1
 
-                self.update_path(path, current_node, extensions)
-                self.enqueue_label.config(text=f"Enqueues: {enqueue_count}")
-                self.queue_size_label.config(text=f"Queue Size: {len(self.queue)}")
-                self.path_elements_label.config(text=f"Path Elements: {path}")
+            self.enqueue_label.config(text=f"Enqueues: {enqueue_count}")
+            self.queue_size_label.config(text=f"Queue Size: N/A")  # Not applicable for hill climbing
+            self.path_elements_label.config(text=f"Path Elements: {path}")
 
-                print("Algorithm: Hill Climbing")
-                print("Iteration:", len(self.visited))
-                print("Enqueues:", enqueue_count)
-                print("Queue Size:", len(self.queue))
-                print("Path Elements:", path)
+            print("Algorithm: Hill Climbing")
+            print("Iteration:", len(path) - 1)
+            print("Enqueues:", enqueue_count)
+            print("Queue Size: N/A")
+            print("Path Elements:", path)
 
-                self.master.update()
+            self.master.update()
+
+        if current_node == goal_node:
+            print("Path found:", path)
+            self.path_found_label.config(text=f"Path Found: {path}")
 
         self.play_button.config(state=tk.NORMAL)
         self.pause_button.config(state=tk.DISABLED)
