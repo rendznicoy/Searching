@@ -1,2 +1,2 @@
 # Searching
-Searching Algorithms Simulation
+Searching Algorithms Simulation and Visualization created using Python
