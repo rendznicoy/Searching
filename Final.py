@@ -7,6 +7,7 @@ from collections import deque
 import time
 import random
 import math
+import collections.abc
 
 class Node:
     def __init__(self, name, neighbors):
@@ -15,14 +16,26 @@ class Node:
 
 def generate_neighbors(graph, node):
     # Retrieve neighbors from the graph
-    if node in graph:
-        return graph[node].neighbors
+    if isinstance(graph[node], dict):  # Check if the node has neighbors
+        return graph[node].get('neighbors', [])
+    elif isinstance(graph[node], collections.abc.Mapping):  # Check if the graph is an AtlasView
+        return list(graph.neighbors(node))
     else:
         return []
 
 class PathfindingSimulator:
     def __init__(self, master):
         self.master = master
+        self.visited = set()
+        self.path = []
+        self.paused = False
+        self.goal_node = None
+        self.goal_reached = False
+        self.enqueue_count = 0
+        self.extension_count = 0
+        self.queue_size = 0
+        self.pause_flag = False
+        self.screen = None
         self.master.title("Pathfinding Simulator")
 
         self.canvas_frame = tk.Frame(self.master)
@@ -71,7 +84,7 @@ class PathfindingSimulator:
         self.path_found_label = tk.Label(self.master, text="Path Found: ")
         self.path_found_label.pack()
 
-        self.graph = {
+        self.initial_graph_structure = {
             'A': Node('A', ['B', 'C']),
             'B': Node('B', ['A', 'D', 'E']),
             'C': Node('C', ['A', 'F', 'G']),
@@ -82,14 +95,20 @@ class PathfindingSimulator:
             'H': Node('H', ['E'])
         }
 
+        self.graph = None
+
         self.fig, self.ax = plt.subplots()
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.canvas_frame)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.master)
         self.canvas.get_tk_widget().pack()
 
         self.pos = nx.spring_layout(self.create_graph())
         self.initial_graph = self.create_graph()
 
         self.draw_graph()
+    
+    def toggle_pause(self):
+        self.paused = not self.paused
+        print("Paused:", self.paused)
 
     def start_simulation(self):
         start_node = self.start_node_entry.get().upper()  # Convert to uppercase for consistency
@@ -219,7 +238,7 @@ class PathfindingSimulator:
         self.pause_button.config(state=tk.NORMAL)
         self.start_simulation_button.config(state=tk.DISABLED)
 
-        start_node = self.start_node_entry.get().upper()  # Convert to uppercase for consistency
+        start_node = self.start_node_entry.get().upper()
         current_node = start_node
         path = [start_node]
 
@@ -227,7 +246,7 @@ class PathfindingSimulator:
             time.sleep(1 / simulation_speed)
 
             neighbors = generate_neighbors(self.graph, current_node)
-            best_neighbor = max(neighbors, key=self.euclidean_distance)
+            best_neighbor = max(neighbors, key=lambda neighbor: self.euclidean_distance(neighbor, goal_node))
 
             if self.euclidean_distance(best_neighbor, goal_node) >= self.euclidean_distance(current_node, goal_node):
                 print("No better neighbor found. Stopping.")
@@ -240,7 +259,7 @@ class PathfindingSimulator:
             enqueue_count += 1
 
             self.enqueue_label.config(text=f"Enqueues: {enqueue_count}")
-            self.queue_size_label.config(text=f"Queue Size: N/A")  # Not applicable for hill climbing
+            self.queue_size_label.config(text=f"Queue Size: N/A")
             self.path_elements_label.config(text=f"Path Elements: {path}")
 
             print("Algorithm: Hill Climbing")
@@ -259,6 +278,7 @@ class PathfindingSimulator:
         self.pause_button.config(state=tk.DISABLED)
         self.start_simulation_button.config(state=tk.NORMAL)
         self.pause_flag = False
+
 
     def simulate_weighted_algorithm(self, algorithm, goal_node):
         print(f"Simulation of {algorithm} is not implemented yet.")
@@ -283,7 +303,7 @@ class PathfindingSimulator:
     def create_graph(self):
         G = nx.Graph()
 
-        for node, data in self.graph.items():
+        for node, data in self.initial_graph_structure.items():
             G.add_node(node)
             if self.algorithm_var.get() not in ["BFS", "DFS"]:
                 for neighbor in data.neighbors:
@@ -293,13 +313,11 @@ class PathfindingSimulator:
                 for neighbor in data.neighbors:
                     G.add_edge(node, neighbor)
 
+        self.graph = G  # Update the self.graph attribute with the networkx Graph
         return G
 
     def draw_graph(self):
-        edge_labels = {(edge[0], edge[1]): data['weight'] for edge, data in self.initial_graph.edges.items() if 'weight' in data}
-        nx.draw(self.initial_graph, self.pos, with_labels=True, ax=self.ax, node_color='skyblue', node_size=700,
-                font_size=10, font_color='black', font_weight='bold')
-        nx.draw_networkx_edge_labels(self.initial_graph, self.pos, edge_labels=edge_labels, font_color='red')
+        nx.draw_networkx(self.initial_graph, self.pos, with_labels=True, font_weight='bold', node_color='yellow', node_size=700, ax=self.ax)
         self.canvas.draw()
 
     def update_path(self, path, current_node, extensions):
@@ -318,12 +336,11 @@ class PathfindingSimulator:
 
 
     def generate_new_graph(self):
-        if self.algorithm_var.get() not in ["BFS", "DFS"]:
-        # If the selected algorithm is not BFS or DFS, create a new graph
-            self.graph = self.create_graph()
-        else:
-        # Otherwise, use the default graph structure
-            self.graph = {
+        algorithm = self.algorithm_var.get()
+
+        if algorithm not in ["BFS", "DFS"]:
+            # If the selected algorithm is not BFS or DFS, create a new graph
+            self.initial_graph_structure = {
                 'A': Node('A', ['B', 'C']),
                 'B': Node('B', ['A', 'D', 'E']),
                 'C': Node('C', ['A', 'F', 'G']),
@@ -333,19 +350,20 @@ class PathfindingSimulator:
                 'G': Node('G', ['C']),
                 'H': Node('H', ['E'])
             }
+        else:
+            # Otherwise, use the default graph structure
+            self.initial_graph_structure = None
 
         # Clear the graph, reset simulation, and create a new layout
-            self.graph.clear()
-            self.reset_simulation()
-            self.pos = nx.spring_layout(self.graph)
+        self.reset_simulation()
+        self.pos = nx.spring_layout(self.create_graph())
 
         # Create the initial graph structure
-            self.initial_graph = self.create_graph()
+        self.initial_graph = self.create_graph()
 
         # Draw the graph
-            self.draw_graph()
+        self.draw_graph()
 
-    
     def algorithm_changed(self, event):
         self.algorithm_menu.bind("<<ComboboxSelected>>", self.algorithm_changed)
         self.generate_new_graph()
@@ -354,7 +372,6 @@ def main():
     root = tk.Tk()
     app = PathfindingSimulator(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
