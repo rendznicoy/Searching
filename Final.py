@@ -8,6 +8,7 @@ import time
 import random
 import math
 import collections.abc
+import warnings
 
 class Node:
     def __init__(self, name, neighbors):
@@ -133,6 +134,8 @@ class PathfindingSimulator:
             self.simulate_dfs(goal_node)
         elif algorithm == "Hill Climbing":
             self.simulate_hill_climbing(goal_node)
+        elif algorithm == "Beam":
+            self.simulate_beam(goal_node)
         else:
             self.simulate_weighted_algorithm(algorithm, goal_node)
 
@@ -242,19 +245,33 @@ class PathfindingSimulator:
         current_node = start_node
         path = [start_node]
 
+        # List to store the pattern of nodes, paths, and costs during the hill climbing
+        pattern = [(current_node, path.copy(), 0)]
+
         while current_node != goal_node and not self.pause_flag:
             time.sleep(1 / simulation_speed)
 
             neighbors = generate_neighbors(self.graph, current_node)
-            best_neighbor = max(neighbors, key=lambda neighbor: self.euclidean_distance(neighbor, goal_node))
+            neighbors.sort(key=lambda neighbor: self.euclidean_distance(neighbor, goal_node))
 
-            if self.euclidean_distance(best_neighbor, goal_node) >= self.euclidean_distance(current_node, goal_node):
-                print("No better neighbor found. Stopping.")
+            found = False
+
+            # Explore neighbors in sorted order
+            for neighbor in neighbors:
+                if neighbor not in path:
+                    # Update path, cost, and current node to the selected neighbor
+                    path.append(neighbor)
+                    pattern.append((neighbor, path.copy(), pattern[-1][2] + self.euclidean_distance(neighbor, goal_node)))
+                    current_node = neighbor
+                    found = True
+                    break
+
+            # If no unvisited neighbor is found, break the loop
+            if not found:
                 break
 
-            current_node = best_neighbor
-            path.append(current_node)
-
+        for current_node, path, cost in pattern:
+            neighbors = generate_neighbors(self.graph, current_node)
             self.update_path(path, current_node, neighbors)
             enqueue_count += 1
 
@@ -278,7 +295,63 @@ class PathfindingSimulator:
         self.pause_button.config(state=tk.DISABLED)
         self.start_simulation_button.config(state=tk.NORMAL)
         self.pause_flag = False
+    
+    def simulate_beam(self, goal_node):
+        simulation_speed = self.speed_scale.get()
+        enqueue_count = 0
 
+        self.play_button.config(state=tk.DISABLED)
+        self.pause_button.config(state=tk.NORMAL)
+        self.start_simulation_button.config(state=tk.DISABLED)
+
+        root_node = self.start_node_entry.get().upper()
+        found = False
+        open_list = [(root_node, [root_node])]  # Initialize open list with root node
+        while open_list and not self.pause_flag and not found:
+            time.sleep(1 / simulation_speed)
+
+            # Replace the following block with your Beam Search algorithm logic
+            current_node, path = open_list.pop(0)
+
+            # Implement your Beam Search algorithm logic here...
+
+            if current_node == goal_node:
+                print("Path found:", path)
+                self.path_found_label.config(text=f"Path Found: {path}")
+                found = True
+                break
+
+            if current_node not in self.visited:
+                self.visited.add(current_node)
+
+                neighbors = generate_neighbors(self.graph, current_node)
+                enqueue_count += len(neighbors)
+                for neighbor in neighbors:
+                    if neighbor not in self.visited:
+                        new_path = list(path)
+                        new_path.append(neighbor)
+                        open_list.append((neighbor, new_path))
+
+                self.update_path(path, current_node, neighbors)
+                self.enqueue_label.config(text=f"Enqueues: {enqueue_count}")
+                self.queue_size_label.config(text=f"Queue Size: {len(open_list)}")
+                self.path_elements_label.config(text=f"Path Elements: {path}")
+
+                print("Algorithm: Beam Search")
+                print("Iteration:", len(path) - 1)
+                print("Enqueues:", enqueue_count)
+                print("Queue Size:", len(open_list))
+                print("Path Elements:", path)
+
+                self.master.update()
+
+        if not found:
+            print("Path not found.")
+
+        self.play_button.config(state=tk.NORMAL)
+        self.pause_button.config(state=tk.DISABLED)
+        self.start_simulation_button.config(state=tk.NORMAL)
+        self.pause_flag = False
 
     def simulate_weighted_algorithm(self, algorithm, goal_node):
         print(f"Simulation of {algorithm} is not implemented yet.")
@@ -321,8 +394,9 @@ class PathfindingSimulator:
         self.canvas.draw()
 
     def update_path(self, path, current_node, extensions):
-        nx.draw_networkx_edges(self.initial_graph, self.pos, edgelist=[(path[i], path[i + 1]) for i in range(len(path) - 1)],
-                               edge_color='red', width=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=DeprecationWarning)
+            nx.draw_networkx_edges(self.initial_graph, self.pos, edgelist=[(path[i], path[i + 1]) for i in range(len(path) - 1)], edge_color='red', width=2, arrows=True, ax=self.ax)
 
         nx.draw_networkx_nodes(self.initial_graph, self.pos, nodelist=[current_node], node_color='green', node_size=700)
 
